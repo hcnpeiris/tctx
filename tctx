@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+
+ENV_FILE="$PWD/.target.env"
+NOTES_FILE="$PWD/notes.txt"
+
+touch "$ENV_FILE"
+
+_load() {
+    source "$ENV_FILE"
+}
+
+_is_opt() {
+    case "$1" in
+        -i|-u|-p|-U|-c|-v|-show|-reload|-addhost|-notes|-h|--help) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+_prefix() {
+    case "$1" in
+        i) printf 'IP' ;;
+        u) printf 'USER' ;;
+        p) printf 'PASS' ;;
+        U) printf 'USERS' ;;
+        c) printf 'CRED' ;;
+        v) printf 'VHOST' ;;
+        *) return 1 ;;
+    esac
+}
+
+_next_index() {
+    local prefix="$1" n=1
+    while printenv "${prefix}${n}" >/dev/null 2>&1; do
+        ((n++))
+    done
+    printf '%s' "$n"
+}
+
+_add() {
+    local prefix="$1" value="$2" n name
+    n="$(_next_index "$prefix")"
+    name="${prefix}${n}"
+
+    printf 'export %s=%q\n' "$name" "$value" >> "$ENV_FILE"
+    export "$name=$value"
+}
+
+_show() {
+    local prefix n=1 value
+    prefix="$(_prefix "$1")" || return 1
+
+    while value="$(printenv "${prefix}${n}" 2>/dev/null)"; do
+        printf '%s\n' "$value"
+        ((n++))
+    done
+}
+
+_add_hosts() {
+    local n=1 entry host ip found=0
+
+    while entry="$(printenv "VHOST${n}" 2>/dev/null)"; do
+        found=1
+
+        if [[ "$entry" != *:* ]]; then
+            printf 'Invalid VHOST%d: %s\n' "$n" "$entry" >&2
+            ((n++))
+            continue
+        fi
+
+        host="${entry%%:*}"
+        ip="${entry#*:}"
+        printf '%s %s\n' "$ip" "$host" | sudo tee -a /etc/hosts >/dev/null
+        ((n++))
+    done
+
+    if (( ! found )); then
+        read -r -p 'Vhost: ' host
+        read -r -p 'IP: ' ip
+        [[ -n "$host" && -n "$ip" ]] || return 1
+        printf '%s %s\n' "$ip" "$host" | sudo tee -a /etc/hosts >/dev/null
+    fi
+}
+
+_help() {
+    cat <<'EOF'
+Usage:
+  source ./start.sh [options]
+
+Options:
+  -i VALUE...       IPs          -> $IP1, $IP2...
+  -u VALUE...       Usernames    -> $USER1, $USER2...
+  -p VALUE...       Passwords    -> $PASS1, $PASS2...
+  -U VALUE...       Users        -> $USERS1, $USERS2...
+  -c VALUE...       Credentials  -> $CRED1, $CRED2...
+  -v VALUE...       Vhosts       -> $VHOST1, $VHOST2...
+                     format: example.local:192.168.1.5
+
+  -show TYPE        Show saved values
+                     TYPE: i u p U c v
+
+  -reload           Reload .target.env
+  -addhost          Add saved vhosts to /etc/hosts
+  -notes TEXT...    Append text to notes.txt
+  -h                Show help
+
+Examples:
+  source ./start.sh -i 192.168.1.10 192.168.1.20
+  source ./start.sh -u admin john -p 'Password123!'
+  source ./start.sh -c 'admin:Password123!'
+  source ./start.sh -v example.local:192.168.1.10
+  source ./start.sh -show i
+  source ./start.sh -addhost
+  source ./start.sh -notes "Found anonymous FTP access"
+EOF
+}
+
+_main() {
+    local opt prefix count
+    local -a values
+
+    _load
+
+    [[ $# -gt 0 ]] || {
+        _help
+        return
+    }
+
+    while (( $# )); do
+        opt="$1"
+        shift
+
+        case "$opt" in
+            -i|-u|-p|-U|-c|-v)
+                prefix="$(_prefix "${opt#-}")"
+                count=0
+
+                while (( $# )) && ! _is_opt "$1"; do
+                    _add "$prefix" "$1"
+                    shift
+                    ((count++))
+                done
+
+                (( count )) || {
+                    printf '%s requires a value\n' "$opt" >&2
+                    return 1
+                }
+
+                _load
+                ;;
+
+            -show)
+                [[ $# -gt 0 ]] || {
+                    printf '%s\n' '-show requires: i, u, p, U, c, or v' >&2
+                    return 1
+                }
+
+                _show "$1" || {
+                    printf 'Invalid type: %s\n' "$1" >&2
+                    return 1
+                }
+                shift
+                ;;
+
+            -reload)
+                _load
+                ;;
+
+            -addhost)
+                _add_hosts
+                ;;
+
+            -notes)
+                values=()
+
+                while (( $# )) && ! _is_opt "$1"; do
+                    values+=("$1")
+                    shift
+                done
+
+                ((${#values[@]})) || {
+                    printf '%s\n' '-notes requires text' >&2
+                    return 1
+                }
+
+                printf '%s\n' "${values[*]}" >> "$NOTES_FILE"
+                ;;
+
+            -h|--help)
+                _help
+                ;;
+
+            *)
+                printf 'Unknown option: %s\n' "$opt" >&2
+                return 1
+                ;;
+        esac
+    done
+}
+
+_main "$@"

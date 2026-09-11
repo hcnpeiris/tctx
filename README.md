@@ -40,4 +40,3 @@ source tctx -addhost
 source tctx -notes "Found anonymous FTP access"
 source tctx -h
 ```
-# tctx

@@ -11,7 +11,8 @@ _load() {
 
 _is_opt() {
     case "$1" in
-        -i|-u|-p|-U|-c|-v|-show|-reload|-addhost|-notes|-h|--help) return 0 ;;
+        i|u|p|U|c|v|show|reload|reset|addhost|notes|h|help|\
+        -i|-u|-p|-U|-c|-v|-show|-reload|-reset|-addhost|-notes|-h|--help) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -50,9 +51,24 @@ _show() {
     prefix="$(_prefix "$1")" || return 1
 
     while value="$(printenv "${prefix}${n}" 2>/dev/null)"; do
-        printf '%s\n' "$value"
+        printf '%s%d=%s\n' "$prefix" "$n" "$value"
         ((n++))
     done
+}
+
+_reset() {
+    local line name
+
+    while IFS= read -r line; do
+        case "$line" in
+            'export IP'[0-9]*=*|'export USER'[0-9]*=*|'export PASS'[0-9]*=*|\
+            'export USERS'[0-9]*=*|'export CRED'[0-9]*=*|'export VHOST'[0-9]*=*)
+                name="${line#export }"
+                name="${name%%=*}"
+                unset "$name"
+                ;;
+        esac
+    done < "$ENV_FILE"
 }
 
 _add_hosts() {
@@ -84,33 +100,26 @@ _add_hosts() {
 _help() {
     cat <<'EOF'
 Usage:
-  source ./start.sh [options]
+  tctx COMMAND [values]
 
-Options:
-  -i VALUE...       IPs          -> $IP1, $IP2...
-  -u VALUE...       Usernames    -> $USER1, $USER2...
-  -p VALUE...       Passwords    -> $PASS1, $PASS2...
-  -U VALUE...       Users        -> $USERS1, $USERS2...
-  -c VALUE...       Credentials  -> $CRED1, $CRED2...
-  -v VALUE...       Vhosts       -> $VHOST1, $VHOST2...
+Commands:
+  i VALUE...        IPs          -> $IP1, $IP2...
+  u VALUE...        Usernames    -> $USER1, $USER2...
+  p VALUE...        Passwords    -> $PASS1, $PASS2...
+  U VALUE...        Users        -> $USERS1, $USERS2...
+  c VALUE...        Credentials  -> $CRED1, $CRED2...
+  v VALUE...        Vhosts       -> $VHOST1, $VHOST2...
                      format: example.local:192.168.1.5
 
-  -show TYPE        Show saved values
+  show TYPE         Show saved values
                      TYPE: i u p U c v
 
-  -reload           Reload .target.env
-  -addhost          Add saved vhosts to /etc/hosts
-  -notes TEXT...    Append text to notes.txt
-  -h                Show help
+  reload            Reload .target.env
+  reset             Unset saved variables (files are kept)
+  addhost           Add saved vhosts to /etc/hosts
+  notes TEXT...     Append text to notes.txt
+  h, help           Show help
 
-Examples:
-  source ./start.sh -i 192.168.1.10 192.168.1.20
-  source ./start.sh -u admin john -p 'Password123!'
-  source ./start.sh -c 'admin:Password123!'
-  source ./start.sh -v example.local:192.168.1.10
-  source ./start.sh -show i
-  source ./start.sh -addhost
-  source ./start.sh -notes "Found anonymous FTP access"
 EOF
 }
 
@@ -130,7 +139,7 @@ _main() {
         shift
 
         case "$opt" in
-            -i|-u|-p|-U|-c|-v)
+            i|u|p|U|c|v|-i|-u|-p|-U|-c|-v)
                 prefix="$(_prefix "${opt#-}")"
                 count=0
 
@@ -148,9 +157,9 @@ _main() {
                 _load
                 ;;
 
-            -show)
+            show|-show)
                 [[ $# -gt 0 ]] || {
-                    printf '%s\n' '-show requires: i, u, p, U, c, or v' >&2
+                    printf '%s\n' 'show requires: i, u, p, U, c, or v' >&2
                     return 1
                 }
 
@@ -161,15 +170,19 @@ _main() {
                 shift
                 ;;
 
-            -reload)
+            reload|-reload)
                 _load
                 ;;
 
-            -addhost)
+            reset|-reset)
+                _reset
+                ;;
+
+            addhost|-addhost)
                 _add_hosts
                 ;;
 
-            -notes)
+            notes|-notes)
                 values=()
 
                 while (( $# )) && ! _is_opt "$1"; do
@@ -178,14 +191,14 @@ _main() {
                 done
 
                 ((${#values[@]})) || {
-                    printf '%s\n' '-notes requires text' >&2
+                    printf '%s\n' 'notes requires text' >&2
                     return 1
                 }
 
                 printf '%s\n' "${values[*]}" >> "$NOTES_FILE"
                 ;;
 
-            -h|--help)
+            h|help|-h|--help)
                 _help
                 ;;
 

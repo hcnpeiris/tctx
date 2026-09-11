@@ -4,39 +4,33 @@ Small Bash helper for saving target values in `.target.env` and loading them int
 
 ## Install
 
-
 ```bash
-mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/hcnpeiris/tctx/main/tctx -o ~/.local/bin/tctx && chmod +x ~/.local/bin/tctx
+mkdir -p "$HOME/.local/bin"
+curl -fsSL \
+  https://raw.githubusercontent.com/hcnpeiris/tctx/main/tctx \
+  -o "$HOME/.local/bin/tctx"
+chmod +x "$HOME/.local/bin/tctx"
+echo 'tctx() { source ~/.local/bin/tctx "$@"; }' >> ~/.zshrc
+source ~/.zshrc
 ```
 
-Make sure `~/.local/bin` is in your `PATH`.
+The shell function lets `tctx` export and unset variables in the current shell.
 
 ## Usage
 
-Use `source` so variables load into the current shell:
+Values are stored in `.target.env` in the current directory. Value options accept one or more values and can be combined.
 
-```bash
-source tctx -i 192.168.1.8 192.168.1.9
-source tctx -u admin -p 'Password123!'
-source tctx -c 'admin:Password123!'
-source tctx -v example.local:192.168.1.5
-```
-
-Show saved values:
-
-```bash
-source tctx -show i
-source tctx -show u
-source tctx -show p
-source tctx -show c
-source tctx -show v
-```
-
-Other commands:
-
-```bash
-source tctx -reload
-source tctx -addhost
-source tctx -notes "Found anonymous FTP access"
-source tctx -h
+```text
+i VALUE...      Save IPs as IP1, IP2, ...
+u VALUE...      Save usernames as USER1, USER2, ...
+p VALUE...      Save passwords as PASS1, PASS2, ...
+U VALUE...      Save users as USERS1, USERS2, ...
+c VALUE...      Save credentials as CRED1, CRED2, ...
+v HOST:IP...    Save virtual hosts as VHOST1, VHOST2, ...
+show TYPE       Show names and values; TYPE: i, u, p, U, c, or v
+reload          Load saved variables into the current shell
+reset           Unset saved variables without deleting files
+addhost         Append saved virtual hosts to /etc/hosts using sudo
+notes TEXT...   Append text to notes.txt
+h, help         Show help
 ```
